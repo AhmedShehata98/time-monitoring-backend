@@ -1,9 +1,19 @@
-import { Controller, Post, Body, UseGuards, Param } from '@nestjs/common'
+import {
+  Controller,
+  Post,
+  Body,
+  UseGuards,
+  Param,
+  Patch,
+  Request,
+} from '@nestjs/common'
 import { CompanyEmployeesService } from './company_employees.service'
-import { AssignAdminDto } from './dto/assign-admin-dto'
-import { AssignEmployeeDto } from './dto/assign-employee-dto'
+import { AssignEmployeeDto } from './dto/assign-employee.dto'
 import { AuthGuard } from '@nestjs/passport'
 import { User } from 'src/common/decorators/user.decorator'
+import { CompanyRole } from './enums/company-role.enum'
+import { RolesGuard } from 'src/common/guards/roles.guard'
+import { Roles } from 'src/common/decorators/roles.decorator'
 
 @Controller('company-employees')
 export class CompanyEmployeesController {
@@ -12,30 +22,58 @@ export class CompanyEmployeesController {
   ) {}
 
   @UseGuards(AuthGuard('jwt'))
-  @Post('add-admin/:companyId')
-  create(
-    @Body() assignAdminDto: AssignAdminDto,
-    @User('userId') userId: string,
+  @UseGuards(RolesGuard)
+  @Roles(CompanyRole.ADMIN, CompanyRole.OWNER)
+  @Post('companies/:companyId/employees')
+  assignEmployeeToCompany(
     @Param('companyId') companyId: string,
+    @Body() assignEmployeeDto: AssignEmployeeDto,
+    @User('userId') userId: string,
   ) {
-    return this.companyEmployeesService.assignAdmin({
+    return this.companyEmployeesService.assignEmployeeToCompany(
       userId,
       companyId,
-      details: assignAdminDto,
-    })
+      assignEmployeeDto,
+    )
   }
 
   @UseGuards(AuthGuard('jwt'))
-  @Post('add-employee/:companyId')
-  createEmployee(
+  @Post('companies/:companyId/admins')
+  @UseGuards(RolesGuard)
+  @Roles(CompanyRole.OWNER)
+  assignAdminToCompany(
+    @Param('companyId') companyId: string,
     @Body() assignEmployeeDto: AssignEmployeeDto,
     @User('userId') userId: string,
-    @Param('companyId') companyId: string,
   ) {
-    return this.companyEmployeesService.assignEmployee({
-      companyId,
+    return this.companyEmployeesService.assignAdminToCompany(
       userId,
-      details: assignEmployeeDto,
-    })
+      companyId,
+      assignEmployeeDto,
+    )
+  }
+
+  @Post('companies/:companyId/owner/:userId')
+  assignOwnerToCompany(
+    @Param('companyId') companyId: string,
+    @Param('userId') userId: string,
+  ) {
+    return this.companyEmployeesService.assignOwnerToCompany(userId, companyId)
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(RolesGuard)
+  @Roles(CompanyRole.ADMIN, CompanyRole.OWNER)
+  @Patch('companies/:companyId/members/role')
+  changeRole(
+    @Param('companyId') companyId: string,
+    @Body('role') role: CompanyRole,
+    @User('userId') userId: string,
+  ) {
+    return this.companyEmployeesService.changeCompanyMemberRole(
+      userId,
+      companyId,
+      role,
+    )
   }
 }

@@ -4,31 +4,39 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
-  OneToOne,
+  ManyToOne,
   JoinColumn,
 } from 'typeorm'
 import { Company } from '../../companies/entities/company.entity'
+import { EmploymentMode } from '../enums/employment-mode.enum'
+import { TimeTrackingMode } from '../enums/time-tracking-mode.enum'
 
-@Entity('company_settings')
-export class CompanySettings {
+@Entity('company_policies')
+export class CompanyPolicy {
   @PrimaryGeneratedColumn('uuid')
   id: string
 
-  @OneToOne(() => Company, { onDelete: 'CASCADE' })
+  @Column()
+  name: string
+
+  @Column()
+  description: string
+
+  @Column({ default: true })
+  isActive: boolean
+
+  @Column({ type: 'enum', enum: EmploymentMode })
+  employment_mode: EmploymentMode
+
+  @Column({ type: 'enum', enum: TimeTrackingMode })
+  time_tracking_mode: TimeTrackingMode
+
+  @ManyToOne(() => Company, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'company_id' })
   company: Company
 
-  @Column({ default: 8 })
-  workHoursPerDay: number
-
-  @Column({ default: 5 })
-  workDaysPerWeek: number
-
-  @Column({ default: 21 })
-  annualLeaveDays: number
-
-  @Column({ default: 7 })
-  sickLeaveDays: number
+  @Column({ name: 'company_id' })
+  companyId: string
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date

@@ -1,34 +1,39 @@
-import {
-  IsNotEmpty,
-  IsString,
-  IsOptional,
-  IsBoolean,
-  IsEnum,
-} from 'class-validator'
+import { Expose } from '@nestjs/class-transformer'
 import { EmploymentMode } from '../enums/employment-mode.enum'
 import { TimeTrackingMode } from '../enums/time-tracking-mode.enum'
 import { ApiProperty } from '@nestjs/swagger'
 
-export class CreateCompanyPolicyDto {
+export class ReadCompanyPolicyDto {
+  @ApiProperty({ description: 'Policy ID' })
+  @Expose()
+  id: string
+
   @ApiProperty({ description: 'Policy name' })
-  @IsString()
-  @IsNotEmpty()
+  @Expose()
   name: string
 
   @ApiProperty({ description: 'Policy description' })
-  @IsString()
-  @IsNotEmpty()
+  @Expose()
   description: string
 
   @ApiProperty({ description: 'Is policy active' })
-  @IsBoolean()
+  @Expose()
   isActive: boolean
 
   @ApiProperty({ description: 'Employment mode' })
-  @IsEnum(EmploymentMode)
-  employmentMode: EmploymentMode
+  @Expose()
+  employment_mode: EmploymentMode
 
   @ApiProperty({ description: 'Time tracking mode' })
-  @IsEnum(TimeTrackingMode)
-  timeTrackingMode: TimeTrackingMode
+  @Expose()
+  time_tracking_mode: TimeTrackingMode
+
+  @Expose()
+  companyId: string
+
+  @Expose()
+  createdAt: Date
+
+  @Expose()
+  updatedAt: Date
 }

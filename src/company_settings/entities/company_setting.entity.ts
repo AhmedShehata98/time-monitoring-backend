@@ -1,4 +1,4 @@
-import { CompanyEmployee } from 'src/company_employees/entities/company_employee.entity'
+import { Company } from 'src/companies/entities/company.entity'
 import {
   Column,
   CreateDateColumn,
@@ -9,22 +9,25 @@ import {
   UpdateDateColumn,
 } from 'typeorm'
 
-@Entity('employee_settings')
-export class EmployeeSettings {
+@Entity('company_settings')
+export class CompanySettings {
   @PrimaryGeneratedColumn('uuid')
   id: string
 
-  @OneToOne(() => CompanyEmployee, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'employee_id' })
-  employee: CompanyEmployee
+  @OneToOne(() => Company, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'company_id' })
+  company: Company
 
-  @Column({ nullable: true })
+  @Column({ default: 8 })
   workHoursPerDay: number
 
-  @Column({ nullable: true })
+  @Column({ default: 5 })
+  workDaysPerWeek: number
+
+  @Column({ default: 21 })
   annualLeaveDays: number
 
-  @Column({ nullable: true })
+  @Column({ default: 7 })
   sickLeaveDays: number
 
   @CreateDateColumn({ name: 'created_at' })

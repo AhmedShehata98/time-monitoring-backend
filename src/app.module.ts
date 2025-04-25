@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common'
 import { AppController } from './app.controller'
 import { AppService } from './app.service'
 import { typeOrmModule } from 'typeorm.config'
-import { CompaniesService } from './companies/companies.service'
 import { CompaniesModule } from './companies/companies.module'
 import { UsersModule } from './users/users.module'
 import { InvitationsModule } from './invitations/invitations.module'
@@ -14,23 +13,30 @@ import { CompanySettingsModule } from './company_settings/company_settings.modul
 import { ActivityLogsModule } from './activity_logs/activity_logs.module'
 import { AuthenticationModule } from './authentication/authentication.module'
 import { ConfigModule } from '@nestjs/config'
+import configuration from './config/configuration'
 
 @Module({
   imports: [
+    ConfigModule.forRoot({
+      load: [configuration],
+      isGlobal: true, // Make config globally available
+      envFilePath: ['.env', '.env.development', '.env.production'],
+      cache: true,
+      expandVariables: true,
+    }),
     typeOrmModule,
-    // CompaniesModule,
     UsersModule,
+    CompanyEmployeesModule,
+    CompaniesModule,
+    CompanyPoliciesModule,
     // InvitationsModule,
     // WorkSessionsModule,
-    // CompanyPoliciesModule,
     // EmployeePoliciesModule,
-    // CompanyEmployeesModule,
     // CompanySettingsModule,
     // ActivityLogsModule,
     AuthenticationModule,
-    ConfigModule.forRoot(),
   ],
   controllers: [AppController],
-  providers: [AppService, CompaniesService],
+  providers: [AppService],
 })
 export class AppModule {}

@@ -10,9 +10,12 @@ import { UpdateUserDto } from './dto/update-user.dto'
 import { InjectRepository } from '@nestjs/typeorm'
 import { User } from './entities/user.entity'
 import { Repository } from 'typeorm'
+import { AuthenticationService } from 'src/authentication/authentication.service' // Import AuthenticationService
 import * as bcrypt from 'bcrypt'
 import { AuthGuard } from '@nestjs/passport'
 import { User as UserDecorator } from '../common/decorators/user.decorator'
+import { JwtPayload } from 'src/authentication/types/jwt-payload'
+import { ConfigService } from '@nestjs/config'
 // Import LoginUserDto if you have one, otherwise use inline types or CreateUserDto subset
 // import { LoginUserDto } from './dto/login-user.dto';
 
@@ -21,11 +24,14 @@ export class UsersService {
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
-  ) {}
+    private readonly authenticationService: AuthenticationService, 
+    private readonly configService: ConfigService 
+  ) {
+  }
 
   async create(
     createUserDto: CreateUserDto,
-  ): Promise<Omit<User, 'passwordHash'>> {
+  ): Promise<{ user: Omit<User, 'passwordHash'>; accessToken: string }> {
     const { email, password, fullName } = createUserDto
 
     // Check if user already exists
@@ -34,11 +40,11 @@ export class UsersService {
       throw new ConflictException('Email already registered')
     }
 
-    // Hash the password
-    const saltRounds = 10 // Or use a configuration value
+     // Or use a configuration value
     let hashedPassword: string
     try {
-      hashedPassword = await bcrypt.hash(password, saltRounds)
+      const saltRounds = this.configService.get<number>('SALT_ROUNDS');
+      hashedPassword = await bcrypt.hash(password, Number(saltRounds) )
     } catch (error) {
       console.error('Password hashing failed:', error)
       throw new InternalServerErrorException('Failed to process registration.')
@@ -52,9 +58,15 @@ export class UsersService {
 
     try {
       const savedUser = await this.userRepository.save(newUser)
+
+      // Generate JWT token
+      const payload :JwtPayload= { userId: savedUser.id}
+      const { accessToken } = await this.authenticationService.jwtSignAsync(payload)
+
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { passwordHash, ...result } = savedUser // Exclude passwordHash from the returned object
-      return result
+      const { passwordHash, ...userResult } = savedUser 
+
+      return { user: userResult, accessToken }
     } catch (error) {
       // Handle potential database errors (e.g., unique constraint violation if check failed due to race condition)
       if (error.code === '23505') {
@@ -76,7 +88,7 @@ export class UsersService {
     email: string,
     pass: string,
   ): Promise<Omit<User, 'passwordHash'> | null> {
-    const user = await this.findByEmail(email) // Use existing findByEmail which returns the full User object including passwordHash
+    const user = await this.findByEmail(email) 
     if (!user) {
       // User not found - return null for the auth strategy to handle
       return null
@@ -97,7 +109,6 @@ export class UsersService {
     return result
   }
 
-  @UseGuards(AuthGuard('jwt'))
   async findAll(): Promise<Omit<User, 'passwordHash'>[]> {
     // Ensure passwordHash is not selected or filter it out before returning
     // Using queryBuilder allows explicit selection
@@ -130,60 +141,79 @@ export class UsersService {
     return this.userRepository.findOne({ where: { email } })
   }
 
-  @UseGuards(AuthGuard('jwt'))
   async update(
-    @UserDecorator('userId') userId: string,
+    userId: string,
     updateUserDto: UpdateUserDto,
   ): Promise<Omit<User, 'passwordHash'>> {
-    // Hash password if it's being updated
-    let passwordHashToUpdate: string | undefined = undefined
-    if (updateUserDto.password) {
-      try {
-        const saltRounds = 10
-        passwordHashToUpdate = await bcrypt.hash(
-          updateUserDto.password,
-          saltRounds,
-        )
-      } catch (error) {
-        console.error('Password hashing failed during update:', error)
-        throw new InternalServerErrorException('Failed to process update.')
-      }
+    const { password, ...profileUpdates } = updateUserDto;
+
+    // Fetch the user first to ensure they exist
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException(`User with ID "${userId}" not found`);
     }
 
-    // Use preload to safely update existing entity
-    // Create a payload excluding the plain password but including the hash if it was generated
-    const { password, ...restOfDto } = updateUserDto
-    const updatePayload: Partial<User> = {
-      ...restOfDto,
-      ...(passwordHashToUpdate && { passwordHash: passwordHashToUpdate }), // Conditionally add passwordHash
+    // Update password if provided
+    if (password) {
+      await this._updatePassword(user, password);
     }
 
-    const userToUpdate = await this.userRepository.preload({
-      id: userId,
-      ...updatePayload, // Spread the prepared payload
-    })
-
-    if (!userToUpdate) {
-      throw new NotFoundException(`User with ID "${userId}" not found`)
+    // Update other profile details if provided
+    if (Object.keys(profileUpdates).length > 0) {
+      await this._updateProfileDetails(user, profileUpdates);
     }
 
+    // Refetch the updated user to return the latest state without password hash
+    const updatedUser = await this.userRepository.findOne({
+      where: { id: userId },
+      select: ['id', 'email', 'fullName', 'createdAt'], // Ensure passwordHash is not selected
+    });
+
+    if (!updatedUser) {
+      // Should not happen if updates were successful, but good practice to check
+      throw new InternalServerErrorException('Failed to retrieve updated user details.');
+    }
+
+    return updatedUser;
+  }
+
+  // Private helper method to update password
+  private async _updatePassword(user: User, newPassword: string): Promise<void> {
+    let hashedPassword: string;
     try {
-      const updatedUser = await this.userRepository.save(userToUpdate)
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { passwordHash, ...result } = updatedUser // Exclude passwordHash
-      return result
+      const saltRounds = this.configService.get<number>('SALT_ROUNDS');
+      hashedPassword = await bcrypt.hash(newPassword, saltRounds as number);
     } catch (error) {
-      // Handle potential database errors (e.g., unique constraint violation for email)
-      if (error.code === '23505') {
-        // Check for unique constraint violation
-        throw new ConflictException('Email already exists.')
-      }
-      console.error('Database update failed:', error)
-      throw new InternalServerErrorException('Failed to update user.')
+      console.error('Password hashing failed during update:', error);
+      throw new InternalServerErrorException('Failed to process password update.');
+    }
+
+    user.passwordHash = hashedPassword;
+    try {
+      await this.userRepository.save(user);
+    } catch (error) {
+      console.error('Database save failed during password update:', error);
+      throw new InternalServerErrorException('Failed to update password.');
     }
   }
 
-  @UseGuards(AuthGuard('jwt'))
+  // Private helper method to update profile details (excluding password)
+  private async _updateProfileDetails(user: User, updates: Partial<Omit<UpdateUserDto, 'password'>>): Promise<void> {
+    // Apply updates to the user object
+    Object.assign(user, updates);
+
+    try {
+      await this.userRepository.save(user);
+    } catch (error) {
+      // Handle potential database errors (e.g., unique constraint violation for email)
+      if (error.code === '23505') { // Check for unique constraint violation (PostgreSQL specific)
+        throw new ConflictException('Email already exists.');
+      }
+      console.error('Database save failed during profile update:', error);
+      throw new InternalServerErrorException('Failed to update profile details.');
+    }
+  }
+
   async remove(id: string): Promise<void> {
     const result = await this.userRepository.delete(id)
     if (result.affected === 0) {
@@ -199,7 +229,6 @@ export class UsersService {
    * @returns The user profile data.
    * @throws {NotFoundException} If the user with the given ID is not found.
    */
-  @UseGuards(AuthGuard('jwt'))
   async getProfile(
     @UserDecorator('userId') userId: string,
   ): Promise<Omit<User, 'passwordHash'>> {
